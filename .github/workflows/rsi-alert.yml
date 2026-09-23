@@ -1,0 +1,48 @@
+name: RSI/BB Alert
+
+on:
+  schedule:
+    # 07:00 UTC = 16:00 JST — Japanese market check
+    - cron: "0 7 * * *"
+    # 21:00 UTC = 06:00 JST (next day) — US market check
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+    inputs:
+      market:
+        description: "Market to check (jp or us)"
+        required: true
+        default: "jp"
+        type: choice
+        options:
+          - jp
+          - us
+
+jobs:
+  alert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Determine market
+        id: market
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "market=${{ inputs.market }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "0 7 * * *" ]; then
+            echo "market=jp" >> "$GITHUB_OUTPUT"
+          else
+            echo "market=us" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run check
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          IMGBB_API_KEY: ${{ secrets.IMGBB_API_KEY }}
+        run: python rsi_alert.py --market ${{ steps.market.outputs.market }}
