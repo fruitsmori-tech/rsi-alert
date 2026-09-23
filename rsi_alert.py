@@ -132,6 +132,29 @@ def load_credentials():
             f"(stray whitespace, smart quotes, or zero-width characters) — re-copy it directly from "
             f"the LINE Developers console and re-save the secret. Original error: {e}"
         )
+    if len(token) < 100:
+        sys.exit(
+            f"LINE_CHANNEL_ACCESS_TOKEN looks too short (length={len(token)}; a real long-lived "
+            f"channel access token is normally 100+ characters). You likely copied the wrong text "
+            f"(a label instead of the token value) — re-copy it from the LINE Developers console "
+            f"'Messaging API' tab, 'Channel access token (long-lived)' field, and re-save the secret."
+        )
+    try:
+        imgbb_key.encode("ascii")
+    except UnicodeEncodeError as e:
+        bad = [f"U+{ord(c):04X}" for c in imgbb_key if ord(c) > 127]
+        sys.exit(
+            f"IMGBB_API_KEY contains non-ASCII characters (length={len(imgbb_key)}, "
+            f"offending codepoints={bad[:5]}). You likely copied the wrong text (a label instead "
+            f"of the key value) — re-copy it from api.imgbb.com and re-save the secret. "
+            f"Original error: {e}"
+        )
+    if len(imgbb_key) != 32:
+        sys.exit(
+            f"IMGBB_API_KEY looks wrong (length={len(imgbb_key)}; a real imgbb API key is exactly "
+            f"32 hex characters). You likely copied the wrong text — re-copy it from api.imgbb.com "
+            f"and re-save the secret."
+        )
     return token, imgbb_key
 
 
