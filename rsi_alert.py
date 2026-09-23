@@ -116,12 +116,22 @@ def load_env() -> dict:
 
 def load_credentials():
     env = load_env()
-    token = env.get("LINE_CHANNEL_ACCESS_TOKEN")
-    imgbb_key = env.get("IMGBB_API_KEY")
+    token = env.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
+    imgbb_key = env.get("IMGBB_API_KEY", "").strip()
     if not token:
         sys.exit("LINE_CHANNEL_ACCESS_TOKEN missing (set in .env or as an environment variable)")
     if not imgbb_key:
         sys.exit("IMGBB_API_KEY missing (set in .env or as an environment variable)")
+    try:
+        token.encode("ascii")
+    except UnicodeEncodeError as e:
+        bad = [f"U+{ord(c):04X}" for c in token if ord(c) > 127]
+        sys.exit(
+            f"LINE_CHANNEL_ACCESS_TOKEN contains non-ASCII characters (length={len(token)}, "
+            f"offending codepoints={bad[:5]}). The secret value is likely corrupted by copy-paste "
+            f"(stray whitespace, smart quotes, or zero-width characters) — re-copy it directly from "
+            f"the LINE Developers console and re-save the secret. Original error: {e}"
+        )
     return token, imgbb_key
 
 
