@@ -323,6 +323,70 @@ def send_line_messages(token: str, messages: list):
         resp.raise_for_status()
 
 
+def send_with_charts(token: str, imgbb_key: str, market: str, message: str, hit_tickers: list):
+    OUT_DIR.mkdir(exist_ok=True)
+    image_urls = []
+    for ticker in hit_tickers:
+        safe = "".join(c if c.isalnum() else "_" for c in ticker)
+        png_path = OUT_DIR / f"{market}_{safe}.png"
+        try:
+            render_chart(ticker, png_path)
+            url = upload_to_imgbb(imgbb_key, png_path)
+            image_urls.append(url)
+        except Exception as e:
+            print(f"chart/upload error for {ticker}: {e}", file=sys.stderr)
+
+    print(message)
+    messages = [{"type": "text", "text": message}]
+    for url in image_urls:
+        messages.append({"type": "image", "originalContentUrl": url, "previewImageUrl": url})
+    send_line_messages(token, messages)
+
+
+def run_jp_midday(token: str, imgbb_key: str):
+    label, tickers = MARKETS["jp"]
+    up_hits, down_hits, errors = [], [], []
+    latest_date = None
+
+    for ticker in tickers:
+        result, err = check_ticker(ticker)
+        if err:
+            errors.append(err)
+            continue
+        latest_date = result["date"]
+        if result["bb_crossed_up"]:
+            up_hits.append(result)
+        if result["bb_crossed_down"]:
+            down_hits.append(result)
+
+    if errors:
+        print("Errors:\n" + "\n".join(errors), file=sys.stderr)
+
+    if not (up_hits or down_hits):
+        print("No midday BB cross.")
+        return
+
+    lines = [f"【前場引けBBチェック：{label}】", f"{latest_date or '?'} 日足（前場時点）"]
+    if up_hits:
+        lines.append("── ボリンジャーバンド +2σ 上抜け ──")
+        for h in up_hits:
+            lines.append(f"{h['ticker']}: 終値 {h['close']} > 上限 {h['upper']}")
+    if down_hits:
+        lines.append("── ボリンジャーバンド -2σ 下抜け ──")
+        for h in down_hits:
+            lines.append(f"{h['ticker']}: 終値 {h['close']} < 下限 {h['lower']}")
+
+    message = "\n".join(lines)
+    hit_tickers = []
+    seen = set()
+    for h in up_hits + down_hits:
+        if h["ticker"] not in seen:
+            seen.add(h["ticker"])
+            hit_tickers.append(h["ticker"])
+
+    send_with_charts(token, imgbb_key, "jp_midday", message, hit_tickers)
+
+
 def run_market(market: str, token: str, imgbb_key: str):
     label, tickers = MARKETS[market]
     rsi_hits, bb_up_hits, bb_down_hits, errors = [], [], [], []
@@ -383,7 +447,6 @@ def run_market(market: str, token: str, imgbb_key: str):
         send_line_messages(token, [{"type": "text", "text": message}])
         return
 
-    OUT_DIR.mkdir(exist_ok=True)
     hit_tickers = []
     seen = set()
     for h in rsi_hits + bb_up_hits + bb_down_hits + candidate_hits + dip_hits:
@@ -391,31 +454,25 @@ def run_market(market: str, token: str, imgbb_key: str):
             seen.add(h["ticker"])
             hit_tickers.append(h["ticker"])
 
-    image_urls = []
-    for ticker in hit_tickers:
-        safe = "".join(c if c.isalnum() else "_" for c in ticker)
-        png_path = OUT_DIR / f"{market}_{safe}.png"
-        try:
-            render_chart(ticker, png_path)
-            url = upload_to_imgbb(imgbb_key, png_path)
-            image_urls.append(url)
-        except Exception as e:
-            print(f"chart/upload error for {ticker}: {e}", file=sys.stderr)
-
-    print(message)
-    messages = [{"type": "text", "text": message}]
-    for url in image_urls:
-        messages.append({"type": "image", "originalContentUrl": url, "previewImageUrl": url})
-    send_line_messages(token, messages)
+    send_with_charts(token, imgbb_key, market, message, hit_tickers)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--market", choices=sorted(MARKETS), required=True)
+    parser.add_argument(
+        "--midday", action="store_true",
+        help="Run the JP midday BB-cross-only check (no RSI/MACD/dip sections; silent when no hits).",
+    )
     args = parser.parse_args()
+    if args.midday and args.market != "jp":
+        sys.exit("--midday is only supported with --market jp")
 
     token, imgbb_key = load_credentials()
-    run_market(args.market, token, imgbb_key)
+    if args.midday:
+        run_jp_midday(token, imgbb_key)
+    else:
+        run_market(args.market, token, imgbb_key)
 
 
 if __name__ == "__main__":

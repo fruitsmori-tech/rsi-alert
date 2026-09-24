@@ -2,6 +2,8 @@ name: RSI/BB Alert
 
 on:
   schedule:
+    # 03:00 UTC = 12:00 JST — JP midday (post-morning-session) BB-cross-only check
+    - cron: "0 3 * * *"
     # 07:00 UTC = 16:00 JST — Japanese market check
     - cron: "0 7 * * *"
     # 21:00 UTC = 06:00 JST (next day) — US market check
@@ -16,6 +18,11 @@ on:
         options:
           - jp
           - us
+      midday:
+        description: "Run the JP midday BB-only check"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   alert:
@@ -35,14 +42,24 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "market=${{ inputs.market }}" >> "$GITHUB_OUTPUT"
+            if [ "${{ inputs.midday }}" = "true" ]; then
+              echo "extra_args=--midday" >> "$GITHUB_OUTPUT"
+            else
+              echo "extra_args=" >> "$GITHUB_OUTPUT"
+            fi
+          elif [ "${{ github.event.schedule }}" = "0 3 * * *" ]; then
+            echo "market=jp" >> "$GITHUB_OUTPUT"
+            echo "extra_args=--midday" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.schedule }}" = "0 7 * * *" ]; then
             echo "market=jp" >> "$GITHUB_OUTPUT"
+            echo "extra_args=" >> "$GITHUB_OUTPUT"
           else
             echo "market=us" >> "$GITHUB_OUTPUT"
+            echo "extra_args=" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run check
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           IMGBB_API_KEY: ${{ secrets.IMGBB_API_KEY }}
-        run: python rsi_alert.py --market ${{ steps.market.outputs.market }}
+        run: python rsi_alert.py --market ${{ steps.market.outputs.market }} ${{ steps.market.outputs.extra_args }}
