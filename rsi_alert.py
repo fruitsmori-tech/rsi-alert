@@ -65,6 +65,112 @@ TICKERS_JP = [
     "215A.T",
 ]
 
+JP_NAMES = {
+    "9984.T": "ソフトバンクグループ",
+    "285A.T": "Kioxiaホールディングス",
+    "6857.T": "アドバンテスト",
+    "4062.T": "イビデン",
+    "6758.T": "ソニーグループ",
+    "8035.T": "東京エレクトロン",
+    "7735.T": "SCREENホールディングス",
+    "5803.T": "フジクラ",
+    "8306.T": "三菱UFJフィナンシャル・グループ",
+    "6702.T": "富士通",
+    "1551.T": "東証スタンダードTOP20 ETF",
+    "^N225": "日経225",
+    "1306.T": "TOPIX ETF",
+    "2516.T": "東証グロース250 ETF",
+    "5401.T": "日本製鉄",
+    "4107.T": "伊勢化学工業",
+    "5801.T": "古河電気工業",
+    "6954.T": "ファナック",
+    "5706.T": "三井金属鉱業",
+    "7203.T": "トヨタ自動車",
+    "7261.T": "マツダ",
+    "5713.T": "住友金属鉱山",
+    "4063.T": "信越化学工業",
+    "7012.T": "川崎重工業",
+    "7832.T": "バンダイナムコホールディングス",
+    "9697.T": "カプコン",
+    "6460.T": "セガサミーホールディングス",
+    "7011.T": "三菱重工業",
+    "485A.T": "PowerX",
+    "3692.T": "FFRIセキュリティ",
+    "6532.T": "ベイカレント",
+    "6701.T": "NEC",
+    "4980.T": "デクセリアルズ",
+    "9766.T": "コナミグループ",
+    "7746.T": "岡本硝子",
+    "3402.T": "東レ",
+    "6323.T": "ローツェ",
+    "7974.T": "任天堂",
+    "7433.T": "伯東",
+    "278A.T": "テラドローン",
+    "3103.T": "ユニチカ",
+    "5901.T": "東洋製罐グループホールディングス",
+    "5016.T": "JX金属",
+    "3110.T": "日東紡績",
+    "1963.T": "日揮ホールディングス",
+    "6301.T": "コマツ",
+    "7272.T": "ヤマハ発動機",
+    "5844.T": "京都フィナンシャルグループ",
+    "4502.T": "武田薬品工業",
+    "4568.T": "第一三共",
+    "8411.T": "みずほフィナンシャルグループ",
+    "9983.T": "ファーストリテイリング",
+    "7550.T": "ゼンショーホールディングス",
+    "2702.T": "日本マクドナルドホールディングス",
+    "3563.T": "フード&ライフカンパニーズ",
+    "4443.T": "Sansan",
+    "6762.T": "TDK",
+    "6981.T": "村田製作所",
+    "5333.T": "日本ガイシ",
+    "6501.T": "日立製作所",
+    "6674.T": "GSユアサ",
+    "7014.T": "名村造船所",
+    "8031.T": "三井物産",
+    "6269.T": "MODEC",
+    "7003.T": "三井E&S",
+    "9104.T": "商船三井",
+    "1605.T": "INPEX",
+    "7267.T": "本田技研工業",
+    "3498.T": "霞ヶ関キャピタル",
+    "7013.T": "IHI",
+    "6861.T": "キーエンス",
+    "6098.T": "リクルートホールディングス",
+    "8001.T": "伊藤忠商事",
+    "8053.T": "住友商事",
+    "8002.T": "丸紅",
+    "6146.T": "ディスコ",
+    "3863.T": "日本製紙",
+    "3864.T": "三菱製紙",
+    "7912.T": "大日本印刷",
+    "7751.T": "キヤノン",
+    "8766.T": "東京海上ホールディングス",
+    "9031.T": "西日本鉄道",
+    "9042.T": "阪急阪神ホールディングス",
+    "9021.T": "西日本旅客鉄道",
+    "9684.T": "スクウェア・エニックス・ホールディングス",
+    "3156.T": "レスター",
+    "6254.T": "野村マイクロ・サイエンス",
+    "3436.T": "SUMCO",
+    "4704.T": "トレンドマイクロ",
+    "4519.T": "中外製薬",
+    "4202.T": "ダイセル",
+    "4506.T": "住友ファーマ",
+    "5726.T": "大阪チタニウムテクノロジーズ",
+    "6330.T": "東洋エンジニアリング",
+    "3431.T": "宮地エンジニアリンググループ",
+    "5711.T": "三菱マテリアル",
+    "215A.T": "タイミー",
+}
+
+
+def display_name(ticker: str) -> str:
+    name = JP_NAMES.get(ticker)
+    return f"{name}({ticker})" if name else ticker
+
+
 TICKERS_US = [
     "BTC-USD",
     "MSTR", "GEMI", "NVDA", "MRVL", "TER", "INTC", "TSM", "ARM",
@@ -371,11 +477,11 @@ def run_jp_midday(token: str, imgbb_key: str):
     if up_hits:
         lines.append("── ボリンジャーバンド +2σ 上抜け ──")
         for h in up_hits:
-            lines.append(f"{h['ticker']}: 終値 {h['close']} > 上限 {h['upper']}")
+            lines.append(f"{display_name(h['ticker'])}: 終値 {h['close']} > 上限 {h['upper']}")
     if down_hits:
         lines.append("── ボリンジャーバンド -2σ 下抜け ──")
         for h in down_hits:
-            lines.append(f"{h['ticker']}: 終値 {h['close']} < 下限 {h['lower']}")
+            lines.append(f"{display_name(h['ticker'])}: 終値 {h['close']} < 下限 {h['lower']}")
 
     message = "\n".join(lines)
     hit_tickers = []
@@ -420,24 +526,24 @@ def run_market(market: str, token: str, imgbb_key: str):
     if rsi_hits:
         lines.append("── RSI(14) 30割れ ──")
         for h in rsi_hits:
-            lines.append(f"{h['ticker']}: RSI {h['prev_rsi']} → {h['curr_rsi']} (終値 {h['close']})")
+            lines.append(f"{display_name(h['ticker'])}: RSI {h['prev_rsi']} → {h['curr_rsi']} (終値 {h['close']})")
     if bb_up_hits:
         lines.append("── ボリンジャーバンド +2σ 上抜け ──")
         for h in bb_up_hits:
-            lines.append(f"{h['ticker']}: 終値 {h['close']} > 上限 {h['upper']}")
+            lines.append(f"{display_name(h['ticker'])}: 終値 {h['close']} > 上限 {h['upper']}")
     if bb_down_hits:
         lines.append("── ボリンジャーバンド -2σ 下抜け ──")
         for h in bb_down_hits:
-            lines.append(f"{h['ticker']}: 終値 {h['close']} < 下限 {h['lower']}")
+            lines.append(f"{display_name(h['ticker'])}: 終値 {h['close']} < 下限 {h['lower']}")
     if candidate_hits:
         lines.append("🌟 有力銘柄候補（BB+2σ上抜け×MACD）")
         for h in candidate_hits:
             tag = "ゴールデンクロス" if h["macd_golden_cross"] else "GC接近"
-            lines.append(f"{h['ticker']}: 終値 {h['close']} (MACD{tag})")
+            lines.append(f"{display_name(h['ticker'])}: 終値 {h['close']} (MACD{tag})")
     if dip_hits:
         lines.append("📉 BUY THE DIP候補（-2σ下抜け中）")
         for h in dip_hits:
-            lines.append(f"{h['ticker']}: 終値 {h['close']} < 下限 {h['lower']}")
+            lines.append(f"{display_name(h['ticker'])}: 終値 {h['close']} < 下限 {h['lower']}")
     if not any_hits:
         lines.append("該当する銘柄はありませんでした。")
 
