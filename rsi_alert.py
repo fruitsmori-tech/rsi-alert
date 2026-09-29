@@ -320,6 +320,19 @@ def check_ticker(ticker: str):
     prev_lower, curr_lower = float(lower.iloc[-2]), float(lower.iloc[-1])
     prev_hist, curr_hist = float(hist.iloc[-2]), float(hist.iloc[-1])
 
+    # Guard against transient data-provider glitches (e.g. a stock split whose
+    # price-scale adjustment hasn't fully propagated yet), which can otherwise
+    # produce a spurious band-cross signal. Two independent checks:
+    sigma = (curr_upper - curr_lower) / (2 * BB_NUM_STD)
+    if curr_close > 0 and sigma / curr_close < 0.001:
+        return None, f"{ticker}: anomalous data (suspiciously flat volatility, sigma={sigma:.4f})"
+    if prev_close > 0 and abs(curr_close / prev_close - 1) > 0.5:
+        pct = (curr_close / prev_close - 1) * 100
+        return None, (
+            f"{ticker}: anomalous data (price jumped {pct:.0f}% day-over-day, "
+            f"likely a stock split or data glitch)"
+        )
+
     rsi_crossed_down = prev_rsi >= RSI_THRESHOLD and curr_rsi < RSI_THRESHOLD
     bb_crossed_up = prev_close <= prev_upper and curr_close > curr_upper
     bb_crossed_down = prev_close >= prev_lower and curr_close < curr_lower
