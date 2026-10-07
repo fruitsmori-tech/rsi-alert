@@ -14,6 +14,13 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+# Japanese-capable fonts, tried in order (macOS locally, IPA/Noto on GitHub Actions).
+plt.rcParams["font.sans-serif"] = [
+    "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans CJK JP",
+    "IPAGothic", "IPAexGothic", "TakaoGothic", "DejaVu Sans",
+]
+plt.rcParams["axes.unicode_minus"] = False
 import pandas as pd
 import requests
 import yfinance as yf
@@ -409,7 +416,7 @@ def render_chart(ticker: str, out_path: Path, lookback: int = CHART_LOOKBACK_DAY
     ax1.plot(u.index, u.values, label="+2σ", color="#d62728", linewidth=1)
     ax1.plot(l.index, l.values, label="-2σ", color="#2ca02c", linewidth=1)
     ax1.fill_between(c.index, l.values, u.values, color="#cccccc", alpha=0.2)
-    ax1.set_title(ticker)
+    ax1.set_title(display_name(ticker))
     ax1.legend(loc="upper left", fontsize=8)
     ax1.grid(alpha=0.3)
 
