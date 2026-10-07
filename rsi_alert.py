@@ -477,51 +477,7 @@ def send_with_charts(token: str, imgbb_key: str, market: str, message: str, hit_
     send_line_messages(token, messages)
 
 
-def run_jp_midday(token: str, imgbb_key: str):
-    label, tickers = MARKETS["jp"]
-    up_hits, down_hits, errors = [], [], []
-    latest_date = None
-
-    for ticker in tickers:
-        result, err = check_ticker(ticker)
-        if err:
-            errors.append(err)
-            continue
-        latest_date = result["date"]
-        if result["bb_crossed_up"]:
-            up_hits.append(result)
-        if result["bb_crossed_down"]:
-            down_hits.append(result)
-
-    if errors:
-        print("Errors:\n" + "\n".join(errors), file=sys.stderr)
-
-    if not (up_hits or down_hits):
-        print("No midday BB cross.")
-        return
-
-    lines = [f"【前場引けBBチェック：{label}】", f"{latest_date or '?'} 日足（前場時点）"]
-    if up_hits:
-        lines.append("── ボリンジャーバンド +2σ 上抜け ──")
-        for h in up_hits:
-            lines.append(f"{display_name(h['ticker'])}: 終値 {h['close']} > 上限 {h['upper']}")
-    if down_hits:
-        lines.append("── ボリンジャーバンド -2σ 下抜け ──")
-        for h in down_hits:
-            lines.append(f"{display_name(h['ticker'])}: 終値 {h['close']} < 下限 {h['lower']}")
-
-    message = "\n".join(lines)
-    hit_tickers = []
-    seen = set()
-    for h in up_hits + down_hits:
-        if h["ticker"] not in seen:
-            seen.add(h["ticker"])
-            hit_tickers.append(h["ticker"])
-
-    send_with_charts(token, imgbb_key, "jp_midday", message, hit_tickers)
-
-
-def run_market(market: str, token: str, imgbb_key: str):
+def run_market(market: str, token: str, imgbb_key: str, midday: bool = False):
     label, tickers = MARKETS[market]
     rsi_hits, bb_up_hits, bb_down_hits, errors = [], [], [], []
     candidate_hits, dip_hits = [], []
@@ -548,18 +504,21 @@ def run_market(market: str, token: str, imgbb_key: str):
         print("Errors:\n" + "\n".join(errors), file=sys.stderr)
 
     any_hits = rsi_hits or bb_up_hits or bb_down_hits or candidate_hits or dip_hits
-    lines = [f"【BB日足チェック：{label}】", f"{latest_date or '?'} 日足"]
+    if midday:
+        lines = [f"【前場引けBBチェック：{label}】", f"{latest_date or '?'} 日足（前場時点）"]
+    else:
+        lines = [f"【BB日足チェック：{label}】", f"{latest_date or '?'} 日足"]
 
     if rsi_hits:
-        lines.append("── RSI(14) 30割れ ──")
+        lines.append("👀RSI(14)30割れ")
         for h in rsi_hits:
             lines.append(f"{display_name(h['ticker'])}: RSI {h['prev_rsi']} → {h['curr_rsi']} (終値 {h['close']})")
     if bb_up_hits:
-        lines.append("── ボリンジャーバンド +2σ 上抜け ──")
+        lines.append("📈ボリンジャーバンド±2σ上抜け")
         for h in bb_up_hits:
             lines.append(f"{display_name(h['ticker'])}: 終値 {h['close']} > 上限 {h['upper']}")
     if bb_down_hits:
-        lines.append("── ボリンジャーバンド -2σ 下抜け ──")
+        lines.append("📉ボリンジャーバンド±2σ下抜け")
         for h in bb_down_hits:
             lines.append(f"{display_name(h['ticker'])}: 終値 {h['close']} < 下限 {h['lower']}")
     if candidate_hits:
@@ -588,7 +547,7 @@ def run_market(market: str, token: str, imgbb_key: str):
             seen.add(h["ticker"])
             hit_tickers.append(h["ticker"])
 
-    send_with_charts(token, imgbb_key, market, message, hit_tickers)
+    send_with_charts(token, imgbb_key, f"{market}_midday" if midday else market, message, hit_tickers)
 
 
 def main():
@@ -596,17 +555,14 @@ def main():
     parser.add_argument("--market", choices=sorted(MARKETS), required=True)
     parser.add_argument(
         "--midday", action="store_true",
-        help="Run the JP midday BB-cross-only check (no RSI/MACD/dip sections; silent when no hits).",
+        help="Run the JP post-morning-session report (same full report as the evening run).",
     )
     args = parser.parse_args()
     if args.midday and args.market != "jp":
         sys.exit("--midday is only supported with --market jp")
 
     token, imgbb_key = load_credentials()
-    if args.midday:
-        run_jp_midday(token, imgbb_key)
-    else:
-        run_market(args.market, token, imgbb_key)
+    run_market(args.market, token, imgbb_key, midday=args.midday)
 
 
 if __name__ == "__main__":
