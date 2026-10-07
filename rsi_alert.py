@@ -514,11 +514,11 @@ def run_market(market: str, token: str, imgbb_key: str, midday: bool = False):
         for h in rsi_hits:
             lines.append(f"{display_name(h['ticker'])}: RSI {h['prev_rsi']} → {h['curr_rsi']} (終値 {h['close']})")
     if bb_up_hits:
-        lines.append("📈ボリンジャーバンド±2σ上抜け")
+        lines.append("📈ボリンジャーバンド+2σ上抜け")
         for h in bb_up_hits:
             lines.append(f"{display_name(h['ticker'])}: 終値 {h['close']} > 上限 {h['upper']}")
     if bb_down_hits:
-        lines.append("📉ボリンジャーバンド±2σ下抜け")
+        lines.append("📉ボリンジャーバンド-2σ下抜け")
         for h in bb_down_hits:
             lines.append(f"{display_name(h['ticker'])}: 終値 {h['close']} < 下限 {h['lower']}")
     if candidate_hits:
