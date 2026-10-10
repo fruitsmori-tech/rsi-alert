@@ -271,6 +271,7 @@ TICKERS_US = [
 MARKETS = {
     "jp": ("日本株", TICKERS_JP),
     "us": ("米国株・指数・コモディティ", TICKERS_US),
+    "crypto": ("暗号資産", ["BTC-USD", "ETH-USD"]),
 }
 
 

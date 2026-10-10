@@ -8,16 +8,19 @@ on:
     - cron: "0 7 * * 1-5"
     # 21:00 UTC Mon-Fri = 06:00 JST Tue-Sat — US market check (last send: Sat morning, after Fri US close)
     - cron: "0 21 * * 1-5"
+    # 21:00 UTC Sat/Sun = 06:00 JST Sun/Mon — BTC/ETH only (no US/JP markets open)
+    - cron: "0 21 * * 0,6"
   workflow_dispatch:
     inputs:
       market:
-        description: "Market to check (jp or us)"
+        description: "Market to check (jp, us or crypto)"
         required: true
         default: "jp"
         type: choice
         options:
           - jp
           - us
+          - crypto
       midday:
         description: "Run the JP midday BB-only check"
         required: false
@@ -55,6 +58,9 @@ jobs:
             echo "extra_args=--midday" >> "$GITHUB_OUTPUT"
           elif [ "${{ github.event.schedule }}" = "0 7 * * 1-5" ]; then
             echo "market=jp" >> "$GITHUB_OUTPUT"
+            echo "extra_args=" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "0 21 * * 0,6" ]; then
+            echo "market=crypto" >> "$GITHUB_OUTPUT"
             echo "extra_args=" >> "$GITHUB_OUTPUT"
           else
             echo "market=us" >> "$GITHUB_OUTPUT"
