@@ -6,8 +6,8 @@ on:
     - cron: "0 3 * * 1-5"
     # 07:00 UTC = 16:00 JST (Mon-Fri only) — Japanese market check
     - cron: "0 7 * * 1-5"
-    # 21:00 UTC = 06:00 JST (next day) — US market check
-    - cron: "0 21 * * *"
+    # 21:00 UTC Mon-Fri = 06:00 JST Tue-Sat — US market check (last send: Sat morning, after Fri US close)
+    - cron: "0 21 * * 1-5"
   workflow_dispatch:
     inputs:
       market:
