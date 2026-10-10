@@ -2,10 +2,10 @@ name: RSI/BB Alert
 
 on:
   schedule:
-    # 03:00 UTC = 12:00 JST — JP midday (post-morning-session) BB-cross-only check
-    - cron: "0 3 * * *"
-    # 07:00 UTC = 16:00 JST — Japanese market check
-    - cron: "0 7 * * *"
+    # 03:00 UTC = 12:00 JST (Mon-Fri only) — JP midday (post-morning-session) BB-cross-only check
+    - cron: "0 3 * * 1-5"
+    # 07:00 UTC = 16:00 JST (Mon-Fri only) — Japanese market check
+    - cron: "0 7 * * 1-5"
     # 21:00 UTC = 06:00 JST (next day) — US market check
     - cron: "0 21 * * *"
   workflow_dispatch:
@@ -50,10 +50,10 @@ jobs:
             else
               echo "extra_args=" >> "$GITHUB_OUTPUT"
             fi
-          elif [ "${{ github.event.schedule }}" = "0 3 * * *" ]; then
+          elif [ "${{ github.event.schedule }}" = "0 3 * * 1-5" ]; then
             echo "market=jp" >> "$GITHUB_OUTPUT"
             echo "extra_args=--midday" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "0 7 * * *" ]; then
+          elif [ "${{ github.event.schedule }}" = "0 7 * * 1-5" ]; then
             echo "market=jp" >> "$GITHUB_OUTPUT"
             echo "extra_args=" >> "$GITHUB_OUTPUT"
           else
