@@ -273,7 +273,7 @@ TICKERS_US = [
     "META", "MSFT", "AAPL", "PLTR", "SCCO", "ERO", "BKSY", "SPCX",
     "AREC", "USAR", "IPX", "COIN", "CLSK", "MARA", "PM", "MO", "BTI",
     "PFE", "LLY", "MRNA", "JNJ",
-    "ROKU", "U", "PINS", "RXRX", "ABSI",
+    "ROKU", "U", "PINS", "RXRX", "ABSI", "QQQ",
 ]
 
 MARKETS = {
