@@ -7,8 +7,10 @@ Run with --market jp at 16:00 JST (after the TSE close) and
 fetches the tickers relevant to that market.
 """
 import argparse
+import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import matplotlib
@@ -293,14 +295,13 @@ def load_env() -> dict:
             k, v = line.split("=", 1)
             env[k.strip()] = v.strip()
     # Environment variables (e.g. GitHub Actions secrets) take precedence over .env.
-    for key in ("LINE_CHANNEL_ACCESS_TOKEN", "IMGBB_API_KEY"):
+    for key in ("LINE_CHANNEL_ACCESS_TOKEN", "IMGBB_API_KEY", "DISCORD_WEBHOOK_URL"):
         if os.environ.get(key):
             env[key] = os.environ[key]
     return env
 
 
-def load_credentials():
-    env = load_env()
+def _load_line_credentials(env: dict):
     token = env.get("LINE_CHANNEL_ACCESS_TOKEN", "").strip()
     imgbb_key = env.get("IMGBB_API_KEY", "").strip()
     if not token:
@@ -490,6 +491,70 @@ def render_chart(ticker: str, out_path: Path, lookback: int = CHART_LOOKBACK_DAY
     plt.close(fig)
 
 
+def load_credentials() -> dict:
+    env = load_env()
+    webhook = env.get("DISCORD_WEBHOOK_URL", "").strip()
+    if webhook:
+        if not webhook.startswith(
+            ("https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/")
+        ):
+            sys.exit(
+                "DISCORD_WEBHOOK_URL does not look like a Discord webhook URL "
+                "(expected https://discord.com/api/webhooks/...). Re-copy it from the Discord "
+                "channel settings (Integrations > Webhooks) and re-save the secret."
+            )
+        return {"discord": webhook}
+    token, imgbb_key = _load_line_credentials(env)
+    return {"line_token": token, "imgbb_key": imgbb_key}
+
+
+DISCORD_MAX_CONTENT = 1900  # Discord's hard limit is 2000 characters per message
+
+
+def split_for_discord(message: str) -> list:
+    chunks, cur = [], ""
+    for line in message.split("\n"):
+        line = line[:DISCORD_MAX_CONTENT]
+        if cur and len(cur) + 1 + len(line) > DISCORD_MAX_CONTENT:
+            chunks.append(cur)
+            cur = line
+        else:
+            cur = f"{cur}\n{line}" if cur else line
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+
+def _discord_post(url: str, **kwargs):
+    for _ in range(4):
+        resp = requests.post(url, timeout=30, **kwargs)
+        if resp.status_code == 429:
+            try:
+                wait = float(resp.json().get("retry_after", 1))
+            except Exception:
+                wait = 1.0
+            time.sleep(min(wait, 10) + 0.2)
+            continue
+        if not resp.ok:
+            print(f"Discord error {resp.status_code}: {resp.text[:300]}", file=sys.stderr)
+        resp.raise_for_status()
+        return
+    resp.raise_for_status()
+
+
+def send_discord(url: str, message: str, png_paths: list):
+    for chunk in split_for_discord(message):
+        _discord_post(url, json={"content": chunk})
+        time.sleep(0.5)
+    for i in range(0, len(png_paths), 10):  # Discord allows 10 attachments per message
+        batch = png_paths[i:i + 10]
+        files = {
+            f"files[{j}]": (p.name, p.read_bytes(), "image/png") for j, p in enumerate(batch)
+        }
+        _discord_post(url, data={"payload_json": json.dumps({"content": ""})}, files=files)
+        time.sleep(0.5)
+
+
 def upload_to_imgbb(api_key: str, png_path: Path) -> str:
     with open(png_path, "rb") as f:
         resp = requests.post(
@@ -518,30 +583,44 @@ def send_line_messages(token: str, messages: list):
             json={"messages": chunk},
             timeout=15,
         )
+        if not resp.ok:
+            print(f"LINE error {resp.status_code}: {resp.text[:300]}", file=sys.stderr)
         resp.raise_for_status()
 
 
-def send_with_charts(token: str, imgbb_key: str, market: str, message: str, hit_tickers: list):
+def render_charts(market: str, hit_tickers: list) -> list:
     OUT_DIR.mkdir(exist_ok=True)
-    image_urls = []
+    paths = []
     for ticker in hit_tickers:
         safe = "".join(c if c.isalnum() else "_" for c in ticker)
         png_path = OUT_DIR / f"{market}_{safe}.png"
         try:
             render_chart(ticker, png_path)
-            url = upload_to_imgbb(imgbb_key, png_path)
-            image_urls.append(url)
+            paths.append(png_path)
         except Exception as e:
-            print(f"chart/upload error for {ticker}: {e}", file=sys.stderr)
+            print(f"chart error for {ticker}: {e}", file=sys.stderr)
+    return paths
 
+
+def notify(creds: dict, market: str, message: str, hit_tickers: list):
     print(message)
+    paths = render_charts(market, hit_tickers) if hit_tickers else []
+    if creds.get("discord"):
+        send_discord(creds["discord"], message, paths)
+        return
+    image_urls = []
+    for png_path in paths:
+        try:
+            image_urls.append(upload_to_imgbb(creds["imgbb_key"], png_path))
+        except Exception as e:
+            print(f"upload error for {png_path.name}: {e}", file=sys.stderr)
     messages = [{"type": "text", "text": message}]
     for url in image_urls:
         messages.append({"type": "image", "originalContentUrl": url, "previewImageUrl": url})
-    send_line_messages(token, messages)
+    send_line_messages(creds["line_token"], messages)
 
 
-def run_market(market: str, token: str, imgbb_key: str, midday: bool = False):
+def run_market(market: str, creds: dict, midday: bool = False):
     label, tickers = MARKETS[market]
     rsi_hits, bb_up_hits, bb_down_hits, errors = [], [], [], []
     candidate_hits, dip_hits = [], []
@@ -600,8 +679,7 @@ def run_market(market: str, token: str, imgbb_key: str, midday: bool = False):
     message = "\n".join(lines)
 
     if not any_hits:
-        print(message)
-        send_line_messages(token, [{"type": "text", "text": message}])
+        notify(creds, market, message, [])
         return
 
     hit_tickers = []
@@ -611,7 +689,7 @@ def run_market(market: str, token: str, imgbb_key: str, midday: bool = False):
             seen.add(h["ticker"])
             hit_tickers.append(h["ticker"])
 
-    send_with_charts(token, imgbb_key, f"{market}_midday" if midday else market, message, hit_tickers)
+    notify(creds, f"{market}_midday" if midday else market, message, hit_tickers)
 
 
 def main():
@@ -625,8 +703,8 @@ def main():
     if args.midday and args.market != "jp":
         sys.exit("--midday is only supported with --market jp")
 
-    token, imgbb_key = load_credentials()
-    run_market(args.market, token, imgbb_key, midday=args.midday)
+    creds = load_credentials()
+    run_market(args.market, creds, midday=args.midday)
 
 
 if __name__ == "__main__":
