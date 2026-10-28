@@ -36,6 +36,11 @@ on:
         required: false
         default: false
         type: boolean
+      auto:
+        description: "Called by the external timer: dedupe with the scheduled backup runs"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   alert:
@@ -66,14 +71,14 @@ jobs:
           fi
           echo "market=$market" >> "$GITHUB_OUTPUT"
           echo "extra_args=$extra" >> "$GITHUB_OUTPUT"
-          # One marker per report slot per JST day; manual runs are never deduplicated.
+          # One marker per report slot per JST day; manual runs (auto=false) are never deduplicated.
           slot="sent-$market${extra:+-midday}-$(TZ=Asia/Tokyo date +%F)"
           echo "slot=$slot" >> "$GITHUB_OUTPUT"
           mkdir -p .sent && echo "$slot" > .sent/marker
 
       - name: Skip if already sent
         id: dedup
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' || inputs.auto
         uses: actions/cache@v4
         with:
           path: .sent
