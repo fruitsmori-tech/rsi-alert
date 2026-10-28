@@ -2,14 +2,14 @@ name: RSI/BB Alert
 
 on:
   schedule:
-    # 03:00 UTC = 12:00 JST (Mon-Fri only) — JP midday (post-morning-session) BB-cross-only check
-    - cron: "0 3 * * 1-5"
-    # 07:00 UTC = 16:00 JST (Mon-Fri only) — Japanese market check
-    - cron: "0 7 * * 1-5"
-    # 21:00 UTC Mon-Fri = 06:00 JST Tue-Sat — US market check (last send: Sat morning, after Fri US close)
-    - cron: "0 21 * * 1-5"
-    # 21:00 UTC Sat/Sun = 06:00 JST Sun/Mon — BTC/ETH only (no US/JP markets open)
-    - cron: "0 21 * * 0,6"
+    # 02:35 UTC = 11:35 JST (Mon-Fri only) — JP midday report (deadline 11:45 JST; off-minute to reduce GitHub cron delay)
+    - cron: "35 2 * * 1-5"
+    # 06:43 UTC = 15:43 JST (Mon-Fri only) — JP post-close report (deadline 17:00 JST)
+    - cron: "43 6 * * 1-5"
+    # 21:17 UTC Mon-Fri = 06:17 JST Tue-Sat — US market check (deadline 07:00 JST; last send: Sat morning)
+    - cron: "17 21 * * 1-5"
+    # 21:17 UTC Sat/Sun = 06:17 JST Sun/Mon — BTC/ETH only (no US/JP markets open)
+    - cron: "17 21 * * 0,6"
   workflow_dispatch:
     inputs:
       market:
@@ -53,13 +53,13 @@ jobs:
             else
               echo "extra_args=" >> "$GITHUB_OUTPUT"
             fi
-          elif [ "${{ github.event.schedule }}" = "0 3 * * 1-5" ]; then
+          elif [ "${{ github.event.schedule }}" = "35 2 * * 1-5" ]; then
             echo "market=jp" >> "$GITHUB_OUTPUT"
             echo "extra_args=--midday" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "0 7 * * 1-5" ]; then
+          elif [ "${{ github.event.schedule }}" = "43 6 * * 1-5" ]; then
             echo "market=jp" >> "$GITHUB_OUTPUT"
             echo "extra_args=" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "0 21 * * 0,6" ]; then
+          elif [ "${{ github.event.schedule }}" = "17 21 * * 0,6" ]; then
             echo "market=crypto" >> "$GITHUB_OUTPUT"
             echo "extra_args=" >> "$GITHUB_OUTPUT"
           else
