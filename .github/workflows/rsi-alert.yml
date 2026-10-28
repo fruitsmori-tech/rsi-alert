@@ -2,14 +2,24 @@ name: RSI/BB Alert
 
 on:
   schedule:
-    # 02:35 UTC = 11:35 JST (Mon-Fri only) — JP midday report (deadline 11:45 JST; off-minute to reduce GitHub cron delay)
-    - cron: "35 2 * * 1-5"
-    # 06:43 UTC = 15:43 JST (Mon-Fri only) — JP post-close report (deadline 17:00 JST)
-    - cron: "43 6 * * 1-5"
-    # 21:17 UTC Mon-Fri = 06:17 JST Tue-Sat — US market check (deadline 07:00 JST; last send: Sat morning)
+    # GitHub cron can be delayed by minutes to hours. Each report slot is scheduled several
+    # times at off-minutes; the first run to start sends, later ones skip (see "Skip if already sent").
+    # JP midday report (deadline 11:45 JST): 11:33 / 11:39 JST (Mon-Fri)
+    - cron: "33 2 * * 1-5"
+    - cron: "39 2 * * 1-5"
+    # JP post-close report (deadline 17:00 JST): 15:41 / 15:57 / 16:13 / 16:29 JST (Mon-Fri)
+    - cron: "41 6 * * 1-5"
+    - cron: "57 6 * * 1-5"
+    - cron: "13 7 * * 1-5"
+    - cron: "29 7 * * 1-5"
+    # US market check (deadline 07:00 JST): 06:17 / 06:33 / 06:49 JST Tue-Sat (UTC Mon-Fri)
     - cron: "17 21 * * 1-5"
-    # 21:17 UTC Sat/Sun = 06:17 JST Sun/Mon — BTC/ETH only (no US/JP markets open)
+    - cron: "33 21 * * 1-5"
+    - cron: "49 21 * * 1-5"
+    # BTC/ETH only (deadline 07:00 JST): 06:17 / 06:33 / 06:49 JST Sun/Mon (UTC Sat/Sun)
     - cron: "17 21 * * 0,6"
+    - cron: "33 21 * * 0,6"
+    - cron: "49 21 * * 0,6"
   workflow_dispatch:
     inputs:
       market:
@@ -33,41 +43,57 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Determine market
+        id: market
+        env:
+          EVENT: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT_MARKET: ${{ inputs.market }}
+          INPUT_MIDDAY: ${{ inputs.midday }}
+        run: |
+          market=us
+          extra=""
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            market="$INPUT_MARKET"
+            [ "$INPUT_MIDDAY" = "true" ] && extra="--midday"
+          else
+            case "$SCHEDULE" in
+              "33 2 * * 1-5"|"39 2 * * 1-5") market=jp; extra="--midday" ;;
+              "41 6 * * 1-5"|"57 6 * * 1-5"|"13 7 * * 1-5"|"29 7 * * 1-5") market=jp ;;
+              *"* * 0,6") market=crypto ;;
+              *) market=us ;;
+            esac
+          fi
+          echo "market=$market" >> "$GITHUB_OUTPUT"
+          echo "extra_args=$extra" >> "$GITHUB_OUTPUT"
+          # One marker per report slot per JST day; manual runs are never deduplicated.
+          slot="sent-$market${extra:+-midday}-$(TZ=Asia/Tokyo date +%F)"
+          echo "slot=$slot" >> "$GITHUB_OUTPUT"
+          mkdir -p .sent && echo "$slot" > .sent/marker
+
+      - name: Skip if already sent
+        id: dedup
+        if: github.event_name == 'schedule'
+        uses: actions/cache@v4
+        with:
+          path: .sent
+          key: ${{ steps.market.outputs.slot }}
+
       - uses: actions/setup-python@v5
+        if: steps.dedup.outputs.cache-hit != 'true'
         with:
           python-version: "3.11"
 
       - name: Install Japanese font
+        if: steps.dedup.outputs.cache-hit != 'true'
         run: sudo apt-get update && sudo apt-get install -y fonts-ipafont-gothic
 
       - name: Install dependencies
+        if: steps.dedup.outputs.cache-hit != 'true'
         run: pip install -r requirements.txt
 
-      - name: Determine market
-        id: market
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "market=${{ inputs.market }}" >> "$GITHUB_OUTPUT"
-            if [ "${{ inputs.midday }}" = "true" ]; then
-              echo "extra_args=--midday" >> "$GITHUB_OUTPUT"
-            else
-              echo "extra_args=" >> "$GITHUB_OUTPUT"
-            fi
-          elif [ "${{ github.event.schedule }}" = "35 2 * * 1-5" ]; then
-            echo "market=jp" >> "$GITHUB_OUTPUT"
-            echo "extra_args=--midday" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "43 6 * * 1-5" ]; then
-            echo "market=jp" >> "$GITHUB_OUTPUT"
-            echo "extra_args=" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "17 21 * * 0,6" ]; then
-            echo "market=crypto" >> "$GITHUB_OUTPUT"
-            echo "extra_args=" >> "$GITHUB_OUTPUT"
-          else
-            echo "market=us" >> "$GITHUB_OUTPUT"
-            echo "extra_args=" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Run check
+        if: steps.dedup.outputs.cache-hit != 'true'
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           IMGBB_API_KEY: ${{ secrets.IMGBB_API_KEY }}
