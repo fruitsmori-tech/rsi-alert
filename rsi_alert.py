@@ -416,6 +416,7 @@ def check_ticker(ticker: str):
     bb_crossed_up = prev_close <= prev_upper and curr_close > curr_upper
     bb_crossed_down = prev_close >= prev_lower and curr_close < curr_lower
     below_lower_now = curr_close < curr_lower
+    above_upper_now = curr_close > curr_upper
 
     macd_golden_cross = prev_hist <= 0 and curr_hist > 0
     hist_scale = float(hist.iloc[-20:].abs().mean())
@@ -439,6 +440,7 @@ def check_ticker(ticker: str):
         "bb_crossed_up": bb_crossed_up,
         "bb_crossed_down": bb_crossed_down,
         "below_lower_now": below_lower_now,
+        "above_upper_now": above_upper_now,
         "macd_golden_cross": macd_golden_cross,
         "macd_near_cross": macd_near_cross,
     }, None
@@ -623,7 +625,7 @@ def notify(creds: dict, market: str, message: str, hit_tickers: list):
 def run_market(market: str, creds: dict, midday: bool = False):
     label, tickers = MARKETS[market]
     rsi_hits, bb_up_hits, bb_down_hits, errors = [], [], [], []
-    candidate_hits, dip_hits = [], []
+    candidate_hits, dip_hits, wait_hits = [], [], []
     latest_date = None
 
     for ticker in tickers:
@@ -642,11 +644,13 @@ def run_market(market: str, creds: dict, midday: bool = False):
             candidate_hits.append(result)
         if result["below_lower_now"]:
             dip_hits.append(result)
+        if result["above_upper_now"]:
+            wait_hits.append(result)
 
     if errors:
         print("Errors:\n" + "\n".join(errors), file=sys.stderr)
 
-    any_hits = rsi_hits or bb_up_hits or bb_down_hits or candidate_hits or dip_hits
+    any_hits = rsi_hits or bb_up_hits or bb_down_hits or candidate_hits or dip_hits or wait_hits
     if midday:
         lines = [f"【前場引けBBチェック：{label}】", f"{latest_date or '?'} 日足（前場時点）"]
     else:
@@ -673,6 +677,10 @@ def run_market(market: str, creds: dict, midday: bool = False):
         lines.append("📉 BUY THE DIP候補（-2σ下抜け中）")
         for h in dip_hits:
             lines.append(f"{display_name(h['ticker'])}: 終値 {h['close']} < 下限 {h['lower']}")
+    if wait_hits:
+        lines.append("💫 押し目待ち候補（+2σ上抜け中）")
+        for h in wait_hits:
+            lines.append(f"{display_name(h['ticker'])}: 終値 {h['close']} > 上限 {h['upper']}")
     if not any_hits:
         lines.append("該当する銘柄はありませんでした。")
 
@@ -684,7 +692,7 @@ def run_market(market: str, creds: dict, midday: bool = False):
 
     hit_tickers = []
     seen = set()
-    for h in rsi_hits + bb_up_hits + bb_down_hits + candidate_hits + dip_hits:
+    for h in rsi_hits + bb_up_hits + bb_down_hits + candidate_hits + dip_hits + wait_hits:
         if h["ticker"] not in seen:
             seen.add(h["ticker"])
             hit_tickers.append(h["ticker"])
