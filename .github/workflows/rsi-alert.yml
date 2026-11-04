@@ -69,6 +69,21 @@ jobs:
               *) market=us ;;
             esac
           fi
+          # A delayed scheduled backup can start after midnight JST (the previous day's run). It must not
+          # send a stale report or claim the new day's sent-marker, so scheduled runs only count inside
+          # their own slot's window (JST hour): midday 11-14, evening 15-23, US/crypto 6-23.
+          stale=false
+          if [ "$EVENT" = "schedule" ]; then
+            hour=$((10#$(TZ=Asia/Tokyo date +%H)))
+            if [ "$market" = "jp" ] && [ -n "$extra" ]; then
+              { [ "$hour" -lt 11 ] || [ "$hour" -ge 15 ]; } && stale=true
+            elif [ "$market" = "jp" ]; then
+              [ "$hour" -lt 15 ] && stale=true
+            else
+              [ "$hour" -lt 6 ] && stale=true
+            fi
+          fi
+          echo "stale=$stale" >> "$GITHUB_OUTPUT"
           echo "market=$market" >> "$GITHUB_OUTPUT"
           echo "extra_args=$extra" >> "$GITHUB_OUTPUT"
           # One marker per report slot per JST day; manual runs (auto=false) are never deduplicated.
@@ -78,27 +93,27 @@ jobs:
 
       - name: Skip if already sent
         id: dedup
-        if: github.event_name == 'schedule' || inputs.auto
+        if: steps.market.outputs.stale != 'true' && (github.event_name == 'schedule' || inputs.auto)
         uses: actions/cache@v4
         with:
           path: .sent
           key: ${{ steps.market.outputs.slot }}
 
       - uses: actions/setup-python@v5
-        if: steps.dedup.outputs.cache-hit != 'true'
+        if: steps.market.outputs.stale != 'true' && steps.dedup.outputs.cache-hit != 'true'
         with:
           python-version: "3.11"
 
       - name: Install Japanese font
-        if: steps.dedup.outputs.cache-hit != 'true'
+        if: steps.market.outputs.stale != 'true' && steps.dedup.outputs.cache-hit != 'true'
         run: sudo apt-get update && sudo apt-get install -y fonts-ipafont-gothic
 
       - name: Install dependencies
-        if: steps.dedup.outputs.cache-hit != 'true'
+        if: steps.market.outputs.stale != 'true' && steps.dedup.outputs.cache-hit != 'true'
         run: pip install -r requirements.txt
 
       - name: Run check
-        if: steps.dedup.outputs.cache-hit != 'true'
+        if: steps.market.outputs.stale != 'true' && steps.dedup.outputs.cache-hit != 'true'
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           IMGBB_API_KEY: ${{ secrets.IMGBB_API_KEY }}
