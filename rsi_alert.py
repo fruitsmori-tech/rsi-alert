@@ -678,6 +678,9 @@ def render_charts(market: str, hit_tickers: list) -> list:
 
 def notify(creds: dict, market: str, message: str, hit_tickers: list):
     print(message)
+    if not creds:
+        print("(not sent: notifications only go out from GitHub Actions; pass --send to override)")
+        return
     paths = render_charts(market, hit_tickers) if hit_tickers else []
     if creds.get("discord"):
         send_discord(creds["discord"], message, paths)
@@ -800,6 +803,10 @@ def main():
         help="Run the JP post-morning-session report (same full report as the evening run).",
     )
     parser.add_argument(
+        "--send", action="store_true",
+        help="Send notifications even when not running on GitHub Actions.",
+    )
+    parser.add_argument(
         "--force", action="store_true",
         help="Send even when the market was closed today (manual runs).",
     )
@@ -807,7 +814,10 @@ def main():
     if args.midday and args.market != "jp":
         sys.exit("--midday is only supported with --market jp")
 
-    creds = load_credentials()
+    # Only the scheduled GitHub Actions workflow notifies, so a stray local run can never post at an
+    # unscheduled time. --send forces a local notification.
+    can_send = args.send or os.environ.get("GITHUB_ACTIONS") == "true"
+    creds = load_credentials() if can_send else {}
     run_market(args.market, creds, midday=args.midday, force=args.force)
 
 
