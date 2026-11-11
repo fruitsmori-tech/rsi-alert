@@ -8,6 +8,9 @@ fetches the tickers relevant to that market.
 """
 import argparse
 import json
+from collections import Counter
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import os
 import sys
 import time
@@ -691,11 +694,26 @@ def notify(creds: dict, market: str, message: str, hit_tickers: list):
     send_line_messages(creds["line_token"], messages)
 
 
-def run_market(market: str, creds: dict, midday: bool = False):
+def market_was_closed(market: str, dates: list) -> bool:
+    """True when the latest bars are not from the session this run reports on (market holiday).
+
+    JP reports cover today's (JST) session; the US report, run in the JST morning, covers the
+    session that just closed (today's date in New York). Crypto trades every day.
+    """
+    zone = {"jp": "Asia/Tokyo", "us": "America/New_York"}.get(market)
+    if not zone or not dates:
+        return False
+    expected = datetime.now(ZoneInfo(zone)).strftime("%Y-%m-%d")
+    latest = Counter(dates).most_common(1)[0][0]
+    return latest != expected
+
+
+def run_market(market: str, creds: dict, midday: bool = False, force: bool = False):
     label, tickers = MARKETS[market]
     rsi_hits, bb_up_hits, bb_down_hits, errors = [], [], [], []
     candidate_hits, dip_hits, wait_hits = [], [], []
     latest_date = None
+    all_dates = []
 
     for ticker in tickers:
         result, err = check_ticker(ticker)
@@ -703,6 +721,7 @@ def run_market(market: str, creds: dict, midday: bool = False):
             errors.append(err)
             continue
         latest_date = result["date"]
+        all_dates.append(latest_date)
         if result["rsi_crossed_down"]:
             rsi_hits.append(result)
         if result["bb_crossed_up"]:
@@ -718,6 +737,10 @@ def run_market(market: str, creds: dict, midday: bool = False):
 
     if errors:
         print("Errors:\n" + "\n".join(errors), file=sys.stderr)
+
+    if not force and market_was_closed(market, all_dates):
+        print(f"{label}: market closed today (latest bars {latest_date}); nothing sent.")
+        return
 
     any_hits = rsi_hits or bb_up_hits or bb_down_hits or candidate_hits or dip_hits or wait_hits
     if midday:
@@ -776,12 +799,16 @@ def main():
         "--midday", action="store_true",
         help="Run the JP post-morning-session report (same full report as the evening run).",
     )
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Send even when the market was closed today (manual runs).",
+    )
     args = parser.parse_args()
     if args.midday and args.market != "jp":
         sys.exit("--midday is only supported with --market jp")
 
     creds = load_credentials()
-    run_market(args.market, creds, midday=args.midday)
+    run_market(args.market, creds, midday=args.midday, force=args.force)
 
 
 if __name__ == "__main__":

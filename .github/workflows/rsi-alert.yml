@@ -4,19 +4,19 @@ on:
   schedule:
     # GitHub cron can be delayed by minutes to hours. Each report slot is scheduled several
     # times at off-minutes; the first run to start sends, later ones skip (see "Skip if already sent").
-    # JP midday report (deadline 11:45 JST): 11:33 / 11:39 JST (Mon-Fri)
-    - cron: "33 2 * * 1-5"
-    - cron: "39 2 * * 1-5"
-    # JP post-close report (deadline 17:00 JST): 15:41 / 15:57 / 16:13 / 16:29 JST (Mon-Fri)
+    # JP midday report (sent 12:00-12:59 JST only): backups 12:03 / 12:19 JST (Mon-Fri)
+    - cron: "3 3 * * 1-5"
+    - cron: "19 3 * * 1-5"
+    # JP post-close report (sent 15:40-16:59 JST only): 15:41 / 15:57 / 16:13 / 16:29 JST (Mon-Fri)
     - cron: "41 6 * * 1-5"
     - cron: "57 6 * * 1-5"
     - cron: "13 7 * * 1-5"
     - cron: "29 7 * * 1-5"
-    # US market check (deadline 07:00 JST): 06:17 / 06:33 / 06:49 JST Tue-Sat (UTC Mon-Fri)
+    # US market check (sent 06:10-06:59 JST only): 06:17 / 06:33 / 06:49 JST Tue-Sat (UTC Mon-Fri)
     - cron: "17 21 * * 1-5"
     - cron: "33 21 * * 1-5"
     - cron: "49 21 * * 1-5"
-    # BTC/ETH only (deadline 07:00 JST): 06:17 / 06:33 / 06:49 JST Sun/Mon (UTC Sat/Sun)
+    # BTC/ETH only (sent 06:10-06:59 JST only): 06:17 / 06:33 / 06:49 JST Sun/Mon (UTC Sat/Sun)
     - cron: "17 21 * * 0,6"
     - cron: "33 21 * * 0,6"
     - cron: "49 21 * * 0,6"
@@ -55,6 +55,7 @@ jobs:
           SCHEDULE: ${{ github.event.schedule }}
           INPUT_MARKET: ${{ inputs.market }}
           INPUT_MIDDAY: ${{ inputs.midday }}
+          INPUT_AUTO: ${{ inputs.auto }}
         run: |
           market=us
           extra=""
@@ -63,29 +64,34 @@ jobs:
             [ "$INPUT_MIDDAY" = "true" ] && extra="--midday"
           else
             case "$SCHEDULE" in
-              "33 2 * * 1-5"|"39 2 * * 1-5") market=jp; extra="--midday" ;;
+              "3 3 * * 1-5"|"19 3 * * 1-5") market=jp; extra="--midday" ;;
               "41 6 * * 1-5"|"57 6 * * 1-5"|"13 7 * * 1-5"|"29 7 * * 1-5") market=jp ;;
               *"* * 0,6") market=crypto ;;
               *) market=us ;;
             esac
           fi
-          # A delayed scheduled backup can start after midnight JST (the previous day's run). It must not
-          # send a stale report or claim the new day's sent-marker, so scheduled runs only count inside
-          # their own slot's window (JST hour): midday 11-14, evening 15-23, US/crypto 6-23.
+          # Each report is only sent inside its own JST time window; a run (scheduled backup or the
+          # external timer) that starts outside it sends nothing and claims no sent-marker. This also
+          # drops delayed backups from the previous day. Manual runs (auto=false) skip the check and
+          # also ignore the market-holiday check (--force).
           stale=false
-          if [ "$EVENT" = "schedule" ]; then
-            hour=$((10#$(TZ=Asia/Tokyo date +%H)))
+          force=""
+          if [ "$EVENT" = "schedule" ] || [ "$INPUT_AUTO" = "true" ]; then
+            now=$((10#$(TZ=Asia/Tokyo date +%H) * 60 + 10#$(TZ=Asia/Tokyo date +%M)))
             if [ "$market" = "jp" ] && [ -n "$extra" ]; then
-              { [ "$hour" -lt 11 ] || [ "$hour" -ge 15 ]; } && stale=true
+              lo=720; hi=780   # 12:00-12:59
             elif [ "$market" = "jp" ]; then
-              [ "$hour" -lt 15 ] && stale=true
+              lo=940; hi=1020  # 15:40-16:59
             else
-              [ "$hour" -lt 6 ] && stale=true
+              lo=370; hi=420   # 06:10-06:59
             fi
+            { [ "$now" -lt "$lo" ] || [ "$now" -ge "$hi" ]; } && stale=true
+          else
+            force="--force"
           fi
           echo "stale=$stale" >> "$GITHUB_OUTPUT"
           echo "market=$market" >> "$GITHUB_OUTPUT"
-          echo "extra_args=$extra" >> "$GITHUB_OUTPUT"
+          echo "extra_args=$extra $force" >> "$GITHUB_OUTPUT"
           # One marker per report slot per JST day; manual runs (auto=false) are never deduplicated.
           slot="sent-$market${extra:+-midday}-$(TZ=Asia/Tokyo date +%F)"
           echo "slot=$slot" >> "$GITHUB_OUTPUT"
